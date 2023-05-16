@@ -9,8 +9,9 @@ module OpenAI
     def json_post(path:, parameters:)
       to_json(conn.post(uri(path: path)) do |req|
         if parameters[:stream].respond_to?(:call)
-          req.options.on_data = to_json_stream(user_proc: parameters[:stream])
+          req.options.on_data = to_json_stream(user_proc: parameters[:stream])          
           parameters[:stream] = true # Necessary to tell OpenAI to stream.
+          @req = req # Keep this to pass to proc
         elsif parameters[:stream]
           raise ArgumentError, "The stream parameter must be a Proc or have a #call method"
         end
@@ -55,11 +56,15 @@ module OpenAI
     def to_json_stream(user_proc:)
       proc do |chunk, _|
         chunk.scan(/(?:data|error): (\{.*\})/i).flatten.each do |data|
-          user_proc.call(JSON.parse(data))
+          user_proc.call(JSON.parse(data), read_req)
         rescue JSON::ParserError
           # Ignore invalid JSON.
         end
       end
+    end
+
+    def read_req
+      @req
     end
 
     def conn(multipart: false)
